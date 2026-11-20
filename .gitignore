@@ -15,3 +15,6 @@ captures/
 # Machine and editor files
 .DS_Store
 .claude/settings.local.json
+
+# /brag video work files (frames, scripts, stills)
+brag-output*/work/

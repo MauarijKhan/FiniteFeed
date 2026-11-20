@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- No packageNames filter: the service needs window changes from every app to tell when
-     Instagram/YouTube was opened from a shared link. Events from other apps return immediately. -->
+     Instagram/YouTube was opened from a shared link. Events from other apps return immediately.
+     flagIncludeNotImportantViews: Instagram marks some layout views as unimportant for
+     accessibility, including the only view that says the Home tab is selected (its icon) and
+     the home feed's sticky_header_list (seen Nov 21 2026, Instagram 457). Without them the
+     home feed can't be recognised once its top bar hides on scroll. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
     android:description="@string/a11y_description"
     android:isAccessibilityTool="false"

@@ -98,8 +98,15 @@ data class Parental(
     val failures: Int = 0,
     val lockedUntil: Long = 0,
     val unlockedUntil: Long = 0,
+    /** A recovery code was made; it can reset a forgotten PIN at once. */
+    val hasRecoveryCode: Boolean = false,
+    /** A 72-hour "forgot PIN" reset is counting down since this time (0 = none). */
+    val resetStartedAt: Long = 0,
+    /** A reset finished at this time; shown until dismissed (0 = none). */
+    val resetDoneAt: Long = 0,
 ) {
     fun unlocked(now: Long) = !enabled || unlockedUntil > now
+    val resetPending: Boolean get() = enabled && resetStartedAt > 0
 }
 
 sealed interface PinCheck {
@@ -165,6 +172,9 @@ class Store private constructor(context: Context) {
             guard = prefs.getBoolean("parent_guard", true),
             failures = prefs.getInt("parent_failures", 0),
             lockedUntil = prefs.getLong("parent_locked_until", 0),
+            hasRecoveryCode = prefs.contains("parent_code_hash"),
+            resetStartedAt = prefs.getLong("parent_reset_at", 0),
+            resetDoneAt = prefs.getLong("parent_reset_done", 0),
         ),
     )
     val parental: StateFlow<Parental> = _parental.asStateFlow()
@@ -222,11 +232,15 @@ class Store private constructor(context: Context) {
             .putInt("parent_failures", 0)
             .putLong("parent_locked_until", 0)
             .apply()
-        _parental.value = _parental.value.copy(
-            enabled = true,
-            failures = 0,
-            lockedUntil = 0,
-            unlockedUntil = now + PARENT_UNLOCK_MS,
+        setParental(
+            _parental.value.copy(
+                enabled = true,
+                failures = 0,
+                lockedUntil = 0,
+                unlockedUntil = now + PARENT_UNLOCK_MS,
+                resetStartedAt = 0,
+                resetDoneAt = 0,
+            ),
         )
     }
 
@@ -236,9 +250,14 @@ class Store private constructor(context: Context) {
         val salt = prefs.getString("parent_salt", null)
         val hash = prefs.getString("parent_hash", null)
         if (salt != null && hash != null && ParentPin.matches(pin, salt, hash)) {
-            setParental(p.copy(failures = 0, lockedUntil = 0, unlockedUntil = now + PARENT_UNLOCK_MS))
+            // Knowing the PIN also cancels a "forgot PIN" reset.
+            setParental(p.copy(failures = 0, lockedUntil = 0, unlockedUntil = now + PARENT_UNLOCK_MS, resetStartedAt = 0))
             return PinCheck.Ok
         }
+        return wrongGuess(p, now)
+    }
+
+    private fun wrongGuess(p: Parental, now: Long): PinCheck {
         val failures = p.failures + 1
         val lockout = ParentPin.lockoutMs(failures)
         val until = if (lockout > 0) now + lockout else 0
@@ -246,14 +265,68 @@ class Store private constructor(context: Context) {
         return PinCheck.Wrong(until)
     }
 
+    // ---- Forgot PIN ----
+
+    /** Makes a new recovery code (replacing any old one) and returns it, to show once. */
+    fun newRecoveryCode(): String {
+        val code = ParentPin.newRecoveryCode()
+        val salt = ParentPin.newSalt()
+        prefs.edit()
+            .putString("parent_code_salt", salt)
+            .putString("parent_code_hash", ParentPin.hash(ParentPin.normalizeCode(code), salt))
+            .apply()
+        setParental(_parental.value.copy(hasRecoveryCode = true))
+        return code
+    }
+
+    /**
+     * The recovery code instead of the PIN. Shares the PIN's lockout, so it can't be guessed
+     * either. On success it unlocks and cancels any reset; the UI then asks for a new PIN.
+     */
+    fun checkRecoveryCode(code: String, now: Long): PinCheck {
+        val p = _parental.value
+        if (p.lockedUntil > now) return PinCheck.Wrong(p.lockedUntil)
+        val salt = prefs.getString("parent_code_salt", null)
+        val hash = prefs.getString("parent_code_hash", null)
+        if (salt != null && hash != null && ParentPin.codeMatches(code, salt, hash)) {
+            setParental(p.copy(failures = 0, lockedUntil = 0, unlockedUntil = now + PARENT_UNLOCK_MS, resetStartedAt = 0))
+            return PinCheck.Ok
+        }
+        return wrongGuess(p, now)
+    }
+
+    /** No PIN and no code: start the 72-hour countdown. Limits stay on meanwhile. */
+    fun startPinReset(now: Long) {
+        if (_parental.value.resetStartedAt == 0L) setParental(_parental.value.copy(resetStartedAt = now))
+    }
+
+    fun cancelPinReset() = setParental(_parental.value.copy(resetStartedAt = 0))
+
+    /** When a countdown has run out: parental controls go off (limits stay) and a notice is shown. */
+    fun applyPinResetIfDue(now: Long) {
+        val p = _parental.value
+        if (!p.enabled || !ParentPin.resetDue(p.resetStartedAt, now)) return
+        clearParentSecrets()
+        setParental(Parental(guard = p.guard, resetDoneAt = now))
+    }
+
+    fun dismissResetNotice() = setParental(_parental.value.copy(resetDoneAt = 0))
+
     fun lockParent() = setParental(_parental.value.copy(unlockedUntil = 0))
 
     fun setParentGuard(on: Boolean) = setParental(_parental.value.copy(guard = on))
 
     /** Turns parental controls off. The UI only offers this while unlocked. */
     fun disableParental() {
-        prefs.edit().remove("parent_salt").remove("parent_hash").apply()
+        clearParentSecrets()
         setParental(Parental())
+    }
+
+    private fun clearParentSecrets() {
+        prefs.edit()
+            .remove("parent_salt").remove("parent_hash")
+            .remove("parent_code_salt").remove("parent_code_hash")
+            .apply()
     }
 
     /** A parent's change: applies at once, skipping Strict mode's wait, and drops any queued change. */
@@ -269,6 +342,8 @@ class Store private constructor(context: Context) {
             .putBoolean("parent_guard", p.guard)
             .putInt("parent_failures", p.failures)
             .putLong("parent_locked_until", p.lockedUntil)
+            .putLong("parent_reset_at", p.resetStartedAt)
+            .putLong("parent_reset_done", p.resetDoneAt)
             .apply()
     }
 

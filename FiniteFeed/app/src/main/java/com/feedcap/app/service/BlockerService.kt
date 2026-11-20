@@ -12,6 +12,7 @@ import android.util.Log
 import com.feedcap.app.BuildConfig
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
 import com.feedcap.app.budget.Block
 import com.feedcap.app.budget.BlockReason
@@ -69,7 +70,6 @@ class BlockerService : AccessibilityService() {
     private var lastScrollAt = 0L
     private var lastTickAt = 0L
     private var lastEnforceAt = 0L
-    private var enforceAttempts = 0
     private var lastSharedToastAt = 0L
 
     /** The home feed is the screen in front (set by scans). */
@@ -202,11 +202,30 @@ class BlockerService : AccessibilityService() {
         }
     }
 
+    /**
+     * The app's own window. Not simply rootInActiveWindow: once the block screen or curtain is
+     * touched, Android makes that overlay the active window, and reading it instead of the app
+     * looked like "left Reels", which stopped enforcement while Reels was still on screen.
+     * Prefers the active window when it is the app; otherwise the app's largest window on screen.
+     */
+    private fun appRoot(pkg: String): AccessibilityNodeInfo? {
+        rootInActiveWindow?.takeIf { it.packageName?.toString() == pkg }?.let { return it }
+        val r = Rect()
+        return windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .mapNotNull { it.root }
+            .filter { it.packageName?.toString() == pkg }
+            .maxByOrNull { it.getBoundsInScreen(r); r.width().toLong() * r.height() }
+    }
+
+    /** A visible view with this short ID in any of the app's windows. */
+    private fun findInApp(rule: AppRule, id: String): AccessibilityNodeInfo? =
+        appRoot(rule.pkg)?.findAccessibilityNodeInfosByViewId(rule.fullId(id))?.firstOrNull { it.isVisibleToUser }
+
     private fun scan(rule: AppRule) {
         val now = System.currentTimeMillis()
         lastScanAt = now
-        val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() != rule.pkg) return
+        val root = appRoot(rule.pkg) ?: return
 
         val onSurface = isOnSurface(root, rule)
         // Only screens outside Reels/Shorts can mark a DM (the Reels UI has its own share/send bits).
@@ -294,7 +313,21 @@ class BlockerService : AccessibilityService() {
         if (rule.feedTopBarIds.any { isVisible(root, rule.fullId(it)) }) return true
         if (rule.feedScreenIds.none { isVisible(root, rule.fullId(it)) }) return false
         val tab = rule.feedTabId ?: return true
-        return root.findAccessibilityNodeInfosByViewId(rule.fullId(tab)).any { it.isVisibleToUser && it.isSelected }
+        return root.findAccessibilityNodeInfosByViewId(rule.fullId(tab)).any { it.isVisibleToUser && isTabSelected(it) }
+    }
+
+    /**
+     * A bottom tab is selected. Instagram has marked this on the tab itself and, more recently
+     * (seen Nov 21 2026, Instagram 457), only on the tab's icon inside it, so check both.
+     */
+    private fun isTabSelected(tab: AccessibilityNodeInfo): Boolean {
+        if (tab.isSelected) return true
+        for (i in 0 until tab.childCount) {
+            val c = tab.getChild(i) ?: continue
+            if (c.isSelected) return true
+            for (j in 0 until c.childCount) if (c.getChild(j)?.isSelected == true) return true
+        }
+        return false
     }
 
     private fun isVisible(root: AccessibilityNodeInfo, fullId: String) =
@@ -374,8 +407,8 @@ class BlockerService : AccessibilityService() {
             // check for the home feed right here when the feed list itself scrolls.
             if (!onHomeFeed && isFeedListEvent(event, rule) && now - lastHomeCheckAt >= HOME_CHECK_MS) {
                 lastHomeCheckAt = now
-                val root = rootInActiveWindow
-                if (root != null && root.packageName?.toString() == rule.pkg && isOnHomeFeed(root, rule)) {
+                val root = appRoot(rule.pkg)
+                if (root != null && isOnHomeFeed(root, rule)) {
                     onHomeFeed = true
                     lastMainFeedFrom = -1
                     note("home feed: found on scroll")
@@ -444,7 +477,7 @@ class BlockerService : AccessibilityService() {
     /** The feed list node: the event's source, or found on screen when the event has none. */
     private fun feedList(event: AccessibilityEvent, rule: AppRule): AccessibilityNodeInfo? {
         event.source?.let { return if (it.viewIdResourceName in rule.feedListIds) it else null }
-        val root = rootInActiveWindow ?: return null
+        val root = appRoot(rule.pkg) ?: return null
         return rule.feedListIds.asSequence()
             .flatMap { root.findAccessibilityNodeInfosByViewId(it).asSequence() }
             .firstOrNull { it.isVisibleToUser }
@@ -466,8 +499,8 @@ class BlockerService : AccessibilityService() {
             scrolledDown -> {
                 lastRedirectAt = now
                 // Black the screen at once so the feed can't be watched while we switch.
-                overlay.showCurtain("The main feed is off.\nOpening Following…")
-                openFeedMenu(rule, list, attempt = 0)
+                overlay.showCurtain("The main feed is off.\nOpening Following…", maxMs = REDIRECT_CURTAIN_MS)
+                openFeedMenu(rule, list, attempt = 0, round = 0)
             }
             prevFrom < 0 && from > 0 && dy == 0 -> {
                 // Instagram put the feed back where it was (coming back from Following, say).
@@ -494,20 +527,14 @@ class BlockerService : AccessibilityService() {
         recordBlock(rule.pkg)
 
         overlay.showCurtain("It's sleep time.\n\nText someone if it's important,\nor get some sleep.", maxMs = SLEEP_CURTAIN_MS)
-        val tab = rule.dmTabId?.let { id ->
-            rootInActiveWindow?.findAccessibilityNodeInfosByViewId(rule.fullId(id))?.firstOrNull { it.isVisibleToUser }
-        }
+        val tab = rule.dmTabId?.let { findInApp(rule, it) }
         when {
             tab != null && clickNodeOrParent(tab) -> note("sleep: feed scroll, opened messages")
             // The Following feed has no tab bar: Back returns to the main feed, which has one.
             onFollowingFeed -> {
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 handler.postDelayed({
-                    rule.dmTabId?.let { id ->
-                        rootInActiveWindow?.findAccessibilityNodeInfosByViewId(rule.fullId(id))
-                            ?.firstOrNull { it.isVisibleToUser }
-                            ?.let(::clickNodeOrParent)
-                    }
+                    rule.dmTabId?.let { findInApp(rule, it) }?.let(::clickNodeOrParent)
                 }, MENU_WAIT_MS * 2)
                 note("sleep: Following scroll, back then messages")
             }
@@ -521,72 +548,87 @@ class BlockerService : AccessibilityService() {
 
     /** Re-tapping the Home tab scrolls Instagram's feed to the top. */
     private fun feedToTop(rule: AppRule, list: AccessibilityNodeInfo) {
-        val tab = rule.feedTabId?.let { id ->
-            rootInActiveWindow?.findAccessibilityNodeInfosByViewId(rule.fullId(id))?.firstOrNull { it.isVisibleToUser }
-        }
+        val tab = rule.feedTabId?.let { findInApp(rule, it) }
         if (tab == null || !clickNodeOrParent(tab)) list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
         note("home feed: back to the top")
     }
 
-    /** Taps the Instagram logo. It hides while scrolling down, so scroll up a bit to bring it back. */
-    private fun openFeedMenu(rule: AppRule, list: AccessibilityNodeInfo, attempt: Int) {
-        val title = rule.feedTitleId?.let { id ->
-            rootInActiveWindow?.findAccessibilityNodeInfosByViewId(rule.fullId(id))?.firstOrNull { it.isVisibleToUser }
+    /** Instagram is still on screen (the curtain may be the active window); if the person left, stop tapping. */
+    private fun stillIn(rule: AppRule): Boolean = appRoot(rule.pkg) != null
+
+    /**
+     * Taps the Instagram logo, which opens the feed menu. The logo hides while scrolling down,
+     * so bring it back step by step: scroll up a little, then jump the feed to the top, then
+     * give the header time to slide back in.
+     */
+    private fun openFeedMenu(rule: AppRule, list: AccessibilityNodeInfo, attempt: Int, round: Int) {
+        if (!stillIn(rule)) return redirectFailed(rule, list, "left Instagram")
+        val title = rule.feedTitleId?.let { findInApp(rule, it) }
+        if (title != null && clickNodeOrParent(title)) {
+            // The logo opens a small menu (Following, Favorites); pick Following once it's there.
+            handler.postDelayed({ pickFollowing(rule, list, attempt = 0, round = round) }, MENU_WAIT_MS)
+            return
         }
-        when {
-            title != null && clickNodeOrParent(title) ->
-                // The logo opens a small menu (Following, Favorites); pick Following once it's there.
-                handler.postDelayed({ pickFollowing(rule, list, attempt = 0) }, MENU_WAIT_MS)
-            attempt == 0 -> {
+        when (attempt) {
+            0 -> {
                 list.refresh()
                 list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-                handler.postDelayed({ openFeedMenu(rule, list, attempt = 1) }, MENU_WAIT_MS)
             }
-            else -> {
-                note("home feed: logo not found")
-                mainFeedFallback(list, System.currentTimeMillis())
-            }
+            // Re-tapping Home jumps the feed to the top, where the header always shows.
+            1 -> rule.feedTabId?.let { findInApp(rule, it) }?.let(::clickNodeOrParent)
+            in 2 until LOGO_TRIES -> Unit  // the header is still sliding in
+            else -> return redirectFailed(rule, list, "logo not found")
         }
+        handler.postDelayed({ openFeedMenu(rule, list, attempt + 1, round) }, MENU_WAIT_MS)
     }
 
-    private fun pickFollowing(rule: AppRule, list: AccessibilityNodeInfo, attempt: Int) {
+    private fun pickFollowing(rule: AppRule, list: AccessibilityNodeInfo, attempt: Int, round: Int) {
         val label = rule.followingLabel ?: return
+        if (!stillIn(rule)) return redirectFailed(rule, list, "left Instagram")
+        // The menu is a popup in its own window, so search every Instagram window.
         val roots = (windows.mapNotNull { it.root } + listOfNotNull(rootInActiveWindow))
             .filter { it.packageName?.toString() == rule.pkg }
-        val item = roots.asSequence()
-            .flatMap { it.findAccessibilityNodeInfosByText(label).asSequence() }
-            .firstOrNull { n ->
-                n.isVisibleToUser && (
-                    n.viewIdResourceName?.endsWith("context_menu_item_label") == true ||
-                        (n.isClickable && n.contentDescription?.toString() == label)
-                    )
-            }
+        val candidates = roots.flatMap { it.findAccessibilityNodeInfosByText(label) }.filter { it.isVisibleToUser }
+        // The menu row first; failing that, a row labelled exactly "Following" in a popup window.
+        // Never the main window: there "Following" can be a follow button, and tapping it unfollows.
+        val mainWindow = appRoot(rule.pkg)?.windowId
+        val item = candidates.firstOrNull { n ->
+            n.viewIdResourceName?.endsWith("context_menu_item_label") == true ||
+                (n.isClickable && n.contentDescription?.toString() == label)
+        } ?: candidates.firstOrNull { n ->
+            n.windowId != mainWindow &&
+                (n.text?.toString()?.trim() == label || n.contentDescription?.toString()?.trim() == label)
+        }
         if (item != null && clickNodeOrParent(item)) {
             // Lift the black screen once Following has had a moment to open.
             handler.postDelayed({ overlay.hideCurtain() }, CURTAIN_AFTER_MS)
             recordBlock(rule.pkg)
             toast("Here's Following: people you follow, newest first.")
-            note("home feed: opened Following")
+            note("home feed: opened Following (round $round, try $attempt)")
             return
         }
-        if (attempt < MENU_RETRIES) {
-            handler.postDelayed({ pickFollowing(rule, list, attempt + 1) }, MENU_WAIT_MS)
-        } else {
-            note("home feed: Following menu not found")
-            mainFeedFallback(list, System.currentTimeMillis())
+        when {
+            attempt < MENU_RETRIES ->
+                handler.postDelayed({ pickFollowing(rule, list, attempt + 1, round) }, MENU_WAIT_MS)
+            // The tap may have landed while the header was moving. Go round once more.
+            round == 0 -> openFeedMenu(rule, list, attempt = 0, round = 1)
+            else -> redirectFailed(rule, list, "Following menu not found")
         }
     }
 
-    /** Couldn't open Following: put the feed back at the top and block the screen with directions. */
-    private fun mainFeedFallback(list: AccessibilityNodeInfo, now: Long) {
-        list.refresh()
-        list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-        overlay.show(
-            "The main feed is off",
-            "For posts from people you follow, tap the Instagram logo at the top, then Following.\n" +
-                "Stories and messages still work.",
-        )
-        lastFeedToastAt = now
+    /**
+     * Couldn't open Following this time: put the feed back at the top, behind the curtain, and
+     * lift it. No instructions screen; the next scroll down simply tries again.
+     */
+    private fun redirectFailed(rule: AppRule, list: AccessibilityNodeInfo, why: String) {
+        note("home feed: redirect failed ($why)")
+        if (stillIn(rule)) {
+            list.refresh()
+            feedToTop(rule, list)
+        }
+        handler.postDelayed({ overlay.hideCurtain() }, CURTAIN_AFTER_MS)
+        lastMainFeedFrom = -1
+        lastRedirectAt = System.currentTimeMillis()
     }
 
     private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
@@ -752,6 +794,7 @@ class BlockerService : AccessibilityService() {
     private fun onTick() {
         val now = System.currentTimeMillis()
         store.applyPendingIfDue(now)
+        store.applyPinResetIfDue(now)
         val rule = surfaceRule ?: return
         if (!store.settings.value.enabled || rule.pkg !in store.settings.value.apps) {
             leaveSurface(now)
@@ -759,8 +802,10 @@ class BlockerService : AccessibilityService() {
         }
 
         // Videos play without accessibility events, so re-check the screen every tick.
-        val root = rootInActiveWindow ?: return
-        if (root.packageName?.toString() != rule.pkg || !isOnSurface(root, rule)) {
+        // Read the app's own window: the block screen may be the active window right now.
+        val root = appRoot(rule.pkg)
+        if (root == null && rootInActiveWindow == null && windows.isEmpty()) return  // can't tell this tick
+        if (root == null || !isOnSurface(root, rule)) {
             leaveSurface(now)
             return
         }
@@ -777,17 +822,9 @@ class BlockerService : AccessibilityService() {
 
     private fun enforce(rule: AppRule, block: Block, now: Long) {
         if (now - lastEnforceAt < ENFORCE_GAP_MS) return
-        if (now - lastEnforceAt > ENFORCE_RESET_MS) enforceAttempts = 0
         lastEnforceAt = now
-        enforceAttempts++
-
-        // Back usually leaves Reels/Shorts (to the chat, for a shared reel). If it keeps failing, go home.
-        if (enforceAttempts <= MAX_BACK_ATTEMPTS) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-        } else {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            enforceAttempts = 0
-        }
+        // One checked exit at a time; ticks during it only keep the block screen up.
+        if (!exiting) exitSurface(rule, step = 0)
 
         if (block.reason == BlockReason.SHARED) {
             // Light touch: they only wanted the reel someone sent them.
@@ -805,6 +842,48 @@ class BlockerService : AccessibilityService() {
             val (title, message) = blockText(rule, block)
             overlay.show(title, "$message\nStories, messages and reels people send you still work.")
             note("blocked: ${block.reason}")
+        }
+    }
+
+    private var exiting = false
+
+    /**
+     * Leaves Reels/Shorts and checks that it worked, because one Back isn't always enough
+     * (on Instagram's Reels tab, say, or a reel opened from another reel). Each step waits a
+     * moment, then looks again: Back, then the app's Home tab, then Back, then the phone's
+     * home screen. Back first, so a shared reel returns to its chat.
+     */
+    private fun exitSurface(rule: AppRule, step: Int) {
+        exiting = true
+        when (step) {
+            0, 2 -> performGlobalAction(GLOBAL_ACTION_BACK)
+            1 -> {
+                val home = homeTab(rule)
+                if (home == null || !clickNodeOrParent(home)) performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+            else -> {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                note("exit: went to the home screen")
+                exiting = false
+                return
+            }
+        }
+        handler.postDelayed({
+            val root = appRoot(rule.pkg)
+            if (root != null && isOnSurface(root, rule)) {
+                note("exit: still on ${rule.surfaceName} after step $step")
+                exitSurface(rule, step + 1)
+            } else {
+                exiting = false
+            }
+        }, EXIT_CHECK_MS)
+    }
+
+    /** The app's Home tab: Instagram's by ID, otherwise a visible button labelled "Home". */
+    private fun homeTab(rule: AppRule): AccessibilityNodeInfo? {
+        rule.feedTabId?.let { id -> findInApp(rule, id)?.let { return it } }
+        return appRoot(rule.pkg)?.findAccessibilityNodeInfosByText("Home")?.firstOrNull { n ->
+            n.isVisibleToUser && (n.contentDescription?.toString() == "Home" || n.text?.toString() == "Home")
         }
     }
 
@@ -909,17 +988,21 @@ class BlockerService : AccessibilityService() {
         const val SLEEP_CURTAIN_MS = 2_200L
         const val MENU_WAIT_MS = 350L
         const val MENU_RETRIES = 3
+        /** Steps to bring back the hidden logo: scroll up, jump to top, then two waits. */
+        const val LOGO_TRIES = 4
+        /** Two full rounds of logo + menu take up to about 6.3 s; the curtain outlasts them. */
+        const val REDIRECT_CURTAIN_MS = 7_000L
         const val REENTRY_GRACE_MS = 10_000L
         const val SETTLE_MS = 1_200L
         const val SCROLL_BURST_GAP_MS = 900L
         const val ENFORCE_GAP_MS = 700L
-        const val ENFORCE_RESET_MS = 5_000L
         const val SHARED_TOAST_GAP_MS = 4_000L
         const val FEED_CHECK_MS = 120L
         const val BIG_HEIGHT = 0.6
         const val BIG_WIDTH = 0.9
         const val FEED_PUSH_GAP_MS = 350L
-        const val MAX_BACK_ATTEMPTS = 3
+        /** Wait after each exit step before checking whether Reels/Shorts is gone. */
+        const val EXIT_CHECK_MS = 700L
         const val WARN_VIDEOS_LEFT = 5
         const val WARN_TIME_LEFT_MS = 120_000L
     }

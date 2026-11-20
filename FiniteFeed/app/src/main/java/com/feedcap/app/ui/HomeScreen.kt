@@ -69,6 +69,7 @@ import com.feedcap.app.budget.Budget
 import com.feedcap.app.budget.BudgetState
 import com.feedcap.app.budget.Limits
 import com.feedcap.app.data.AppSettings
+import com.feedcap.app.data.ParentPin
 import com.feedcap.app.data.Store
 import com.feedcap.app.detect.HomeFeedMode
 import com.feedcap.app.detect.Rules
@@ -123,7 +124,7 @@ private enum class Tab(val item: TabItem) {
 /** Pages pushed inside the Settings tab. */
 private enum class Page { HOME, PARENTAL, TEST, APPEARANCE }
 
-private enum class Edit { DAILY, IN_A_ROW, BREAK, SLEEP, BEDTIME, WAKE, HOME_FEED, SHARED, STRICT_EXIT, CREATE_PIN, PERMISSION }
+private enum class Edit { DAILY, IN_A_ROW, BREAK, SLEEP, BEDTIME, WAKE, HOME_FEED, SHARED, STRICT_EXIT, CREATE_PIN, NEW_CODE, PERMISSION }
 
 /** Everything the pages need, so they stay plain functions of state. */
 private class Ui(
@@ -154,6 +155,7 @@ fun HomeScreen(store: Store) {
         while (true) {
             now = System.currentTimeMillis()
             serviceOn = isServiceEnabled(context)
+            store.applyPinResetIfDue(now)
             delay(1_000)
         }
     }
@@ -199,6 +201,21 @@ fun HomeScreen(store: Store) {
 
     BackHandler(enabled = page != Page.HOME || tab != Tab.TODAY) {
         if (page != Page.HOME) page = Page.HOME else tab = Tab.TODAY
+    }
+
+    // Locked by a parent: show only the lock screen, nothing else of the app.
+    if (parental.enabled && !parental.unlocked(now)) {
+        var askPin by remember { mutableStateOf(false) }
+        ParentLockScreen(store, now) { askPin = true }
+        if (askPin) {
+            ParentPinDialog(
+                store = store,
+                reason = "Enter the parent PIN to make changes.",
+                onDismiss = { askPin = false },
+                onUnlocked = { askPin = false },
+            )
+        }
+        return
     }
 
     CompositionLocalProvider(LocalTour provides tour) {
@@ -407,6 +424,22 @@ private fun InsightsPage(ui: Ui) {
         if (!ui.serviceOn) {
             Section(footer = "Finite Feed needs this to notice Reels, Shorts and the home feed.") {
                 row { ActionRow("Turn On Finite Feed") { ui.edit(Edit.PERMISSION) } }
+            }
+        }
+        if (parental.resetPending) {
+            Section(footer = "Someone tapped Forgot PIN. If that wasn't you, enter the PIN to cancel.") {
+                row {
+                    NavRow(
+                        "Parent PIN resets in ${durationText(ParentPin.resetRemainingMs(parental.resetStartedAt, ui.now))}",
+                    ) { ui.open(Page.PARENTAL) }
+                }
+            }
+        }
+        if (parental.resetDoneAt > 0) {
+            Section(footer = "Limits are unchanged. Set a new PIN to turn parental controls back on.") {
+                row { NavRow("The parent PIN was reset on ${dateLabel(parental.resetDoneAt)}", enabled = false) {} }
+                row { ActionRow("Set Up a New PIN") { ui.edit(Edit.CREATE_PIN) } }
+                row { ActionRow("Dismiss", color = fc.label2) { store.dismissResetNotice() } }
             }
         }
         if (parental.enabled) {
@@ -931,8 +964,32 @@ private fun ParentalPage(ui: Ui, parental: com.feedcap.app.data.Parental) {
                     }
                 }
             }
+            if (parental.resetPending) {
+                Section(
+                    header = "PIN Reset",
+                    footer = "Someone tapped Forgot PIN. When the time is up, parental controls turn off. " +
+                        "Entering the PIN or recovery code cancels it.",
+                ) {
+                    row { NavRow("Resets In", durationText(ParentPin.resetRemainingMs(parental.resetStartedAt, ui.now)), enabled = false) {} }
+                    row { ActionRow("Cancel Reset") { ui.guarded("Enter the PIN or recovery code to cancel the reset.") { store.cancelPinReset() } } }
+                }
+            }
             Section(footer = "Parents can also set Daily Time to None: no Reels or Shorts at all.") {
                 row { NavRow("Change PIN") { ui.guarded("Enter your current PIN first.") { ui.edit(Edit.CREATE_PIN) } } }
+            }
+            Section(
+                header = "Recovery",
+                footer = if (parental.hasRecoveryCode) {
+                    "A forgotten PIN can be reset straight away with the recovery code. Making a new code stops the old one working."
+                } else {
+                    "No recovery code yet. Without one, a forgotten PIN takes 72 hours to reset."
+                },
+            ) {
+                row {
+                    NavRow(if (parental.hasRecoveryCode) "Make a New Recovery Code" else "Make a Recovery Code") {
+                        ui.guarded("Enter the parent PIN to make a recovery code.") { ui.edit(Edit.NEW_CODE) }
+                    }
+                }
             }
             Section {
                 row {
@@ -1085,12 +1142,36 @@ private fun EditSheet(ui: Ui, edit: Edit, pkg: String?, close: () -> Unit) {
             }
         }
         Edit.STRICT_EXIT -> StrictExitSheet(ui, close)
-        Edit.CREATE_PIN -> Sheet(title = "", onDismiss = close, doneLabel = "Cancel") {
-            Spacer(Modifier.height(8.dp))
-            CreatePin { pin ->
-                ui.store.setParentPin(pin, System.currentTimeMillis())
-                toast(ui.context, "Parent PIN set")
-                close()
+        Edit.CREATE_PIN -> {
+            // First-time setup also makes a recovery code; changing the PIN keeps the existing one.
+            var code by remember { mutableStateOf<String?>(null) }
+            Sheet(title = "", onDismiss = close, doneLabel = if (code == null) "Cancel" else null) {
+                Spacer(Modifier.height(8.dp))
+                val shown = code
+                if (shown == null) {
+                    CreatePin { pin ->
+                        val firstTime = !ui.store.parental.value.hasRecoveryCode
+                        ui.store.setParentPin(pin, System.currentTimeMillis())
+                        if (firstTime) {
+                            code = ui.store.newRecoveryCode()
+                        } else {
+                            toast(ui.context, "Parent PIN changed")
+                            close()
+                        }
+                    }
+                } else {
+                    RecoveryCodeView(shown) {
+                        toast(ui.context, "Parent PIN set")
+                        close()
+                    }
+                }
+            }
+        }
+        Edit.NEW_CODE -> {
+            val code = remember { ui.store.newRecoveryCode() }
+            Sheet(title = "", onDismiss = close, doneLabel = null) {
+                Spacer(Modifier.height(8.dp))
+                RecoveryCodeView(code, title = "New Recovery Code") { close() }
             }
         }
         Edit.PERMISSION -> PermissionSheet(ui, close)
@@ -1282,6 +1363,10 @@ internal fun openAppInfo(context: Context) {
 }
 
 private fun time(context: Context, millis: Long): String = DateFormat.getTimeFormat(context).format(Date(millis))
+
+private fun dateLabel(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()
+        .format(DateTimeFormatter.ofPattern("MMM d"))
 
 private fun dayName(millis: Long): String =
     java.time.Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDate()

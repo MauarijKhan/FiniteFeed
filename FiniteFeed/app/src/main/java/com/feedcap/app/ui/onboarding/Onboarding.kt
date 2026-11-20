@@ -81,6 +81,7 @@ import com.feedcap.app.data.Store
 import com.feedcap.app.detect.HomeFeedMode
 import com.feedcap.app.detect.Rules
 import com.feedcap.app.ui.CreatePin
+import com.feedcap.app.ui.RecoveryCodeView
 import com.feedcap.app.ui.design.BackChevron
 import com.feedcap.app.ui.design.CheckRow
 import com.feedcap.app.ui.design.Checkmark
@@ -168,6 +169,7 @@ fun OnboardingFlow(store: Store) {
         { "${it.enabled},${it.startMinute},${it.endMinute}" },
     )
     var forward by remember { mutableStateOf(true) }
+    var codeSaved by rememberDraft(store, "code_saved", false, { it.toBooleanStrictOrNull() }, { it.toString() })
     val parental by store.parental.collectAsState()
     val pinDone = parental.enabled
     val needBattery = remember { needsBatteryStep(context) }
@@ -244,7 +246,7 @@ fun OnboardingFlow(store: Store) {
                     Step.APPS -> AppsStep(apps) { apps = it }
                     Step.PLAN -> PlanStep(who, plan, { plan = it }, strict, { strict = it })
                     Step.SLEEP -> SleepStep(who, sleep) { sleep = it }
-                    Step.PIN -> PinStep(pinDone) { pin -> store.setParentPin(pin, System.currentTimeMillis()) }
+                    Step.PIN -> PinStep(store, pinDone, codeSaved) { codeSaved = true }
                     Step.PERMISSION -> PermissionStep(store, onGranted = ::next)
                     Step.BATTERY -> BatteryStep()
                     Step.DONE -> Done(who, plan, sleep, apps, pinDone)
@@ -268,7 +270,7 @@ fun OnboardingFlow(store: Store) {
                     applyChoices()
                     next()
                 }
-                Step.PIN -> PrimaryButton("Continue", enabled = pinDone) { next() }
+                Step.PIN -> if (codeSaved || !pinDone) PrimaryButton("Continue", enabled = pinDone && codeSaved) { next() }
                 Step.PERMISSION -> {
                     val on = isServiceEnabled(context)
                     PrimaryButton(if (on) "Continue" else "Agree and Open Settings") {
@@ -557,24 +559,39 @@ private fun SleepStep(who: Who?, sleep: SleepTime, onChange: (SleepTime) -> Unit
     }
 }
 
+/** Create the PIN, then save the recovery code, then a short confirmation. */
 @Composable
-private fun PinStep(done: Boolean, onCreated: (String) -> Unit) {
-    if (done) {
-        Spacer(Modifier.height(64.dp))
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { DoneBadge() }
-        Spacer(Modifier.height(24.dp))
-        Text("PIN Set", style = FcType.title1, color = fc.label, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Finite Feed's settings are locked. It can't be switched off or uninstalled without the PIN.",
-            style = FcType.body,
-            color = fc.label2,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-        )
-    } else {
-        Spacer(Modifier.height(32.dp))
-        CreatePin(onCreated)
+private fun PinStep(store: Store, pinDone: Boolean, codeSaved: Boolean, onCodeSaved: () -> Unit) {
+    var code by remember { mutableStateOf<String?>(null) }
+    when {
+        !pinDone -> {
+            Spacer(Modifier.height(32.dp))
+            CreatePin { pin ->
+                store.setParentPin(pin, System.currentTimeMillis())
+                code = store.newRecoveryCode()
+            }
+        }
+        !codeSaved -> {
+            // If the app was closed before the code was saved, show a fresh one: the old one was never seen.
+            val shown = code ?: remember { store.newRecoveryCode() }
+            Spacer(Modifier.height(24.dp))
+            RecoveryCodeView(shown, onDone = onCodeSaved)
+        }
+        else -> {
+            Spacer(Modifier.height(64.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { DoneBadge() }
+            Spacer(Modifier.height(24.dp))
+            Text("PIN Set", style = FcType.title1, color = fc.label, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Finite Feed's settings are locked. It can't be switched off or uninstalled without the PIN. " +
+                    "Forgot it? The recovery code resets it.",
+                style = FcType.body,
+                color = fc.label2,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+            )
+        }
     }
 }
 
