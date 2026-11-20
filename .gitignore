@@ -1,0 +1,17 @@
+# Android / Gradle
+FeedCap/.gradle/
+FeedCap/build/
+FeedCap/app/build/
+FeedCap/.kotlin/
+FeedCap/local.properties
+FeedCap/.idea/
+*.iml
+captures/
+
+# Built APKs
+*.apk
+*.aab
+
+# Machine and editor files
+.DS_Store
+.claude/settings.local.json

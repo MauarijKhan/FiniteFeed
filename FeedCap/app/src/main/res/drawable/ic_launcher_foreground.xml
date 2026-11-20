@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A play triangle with a bar under it: video, capped. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,34 L70,50 L44,66 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,72 h36 a3,3 0 0 1 0,6 h-36 a3,3 0 0 1 0,-6 Z" />
+</vector>

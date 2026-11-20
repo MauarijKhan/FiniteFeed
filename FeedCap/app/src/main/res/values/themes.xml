@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Black window so launch doesn't flash white before the (dark by default) UI draws. -->
+    <style name="Theme.FeedCap" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+    <color name="ic_launcher_background">#000000</color>
+</resources>
