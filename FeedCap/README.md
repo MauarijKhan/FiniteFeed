@@ -14,6 +14,12 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 - **Debug = Pro test build**: `com.feedcap.app.test`, label "FeedCap Pro Test", `BuildConfig.PRO_UNLOCKED = true`, plus a Test tools section.
 - **Release**: `com.feedcap.app`, Pro locked. There's no billing yet.
 
+## Releases (CI)
+
+Every push to `main` runs `.github/workflows/release-apk.yml`: the unit tests, then the Pro Test APK, published as a GitHub Release named `build-<run number>`. The run number is used as `versionCode`, so each build installs as an update to the last one.
+
+CI signs with a fixed key from the repo secrets `FEEDCAP_KEYSTORE_BASE64`, `FEEDCAP_KEYSTORE_PASSWORD`, `FEEDCAP_KEY_ALIAS` and `FEEDCAP_KEY_PASSWORD`. Local builds use Android's normal debug key, so a CI APK can't update a locally built one: uninstall first.
+
 ## Install on a phone
 
 ```sh
