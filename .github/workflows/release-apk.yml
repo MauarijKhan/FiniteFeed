@@ -1,4 +1,4 @@
-# Every push to main: run the tests, build the FeedCap Pro Test APK, and publish it as a GitHub Release.
+# Every push to main: run the tests, build the Finite Feed Pro Test APK, and publish it as a GitHub Release.
 name: Release APK
 
 on:
@@ -53,7 +53,7 @@ jobs:
       - name: Name the APK
         id: apk
         run: |
-          name="FeedCap-pro-test-build-${GITHUB_RUN_NUMBER}.apk"
+          name="FiniteFeed-pro-test-build-${GITHUB_RUN_NUMBER}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/$name"
           echo "path=$RUNNER_TEMP/$name" >> "$GITHUB_OUTPUT"
 
@@ -65,7 +65,7 @@ jobs:
           tag="build-${GITHUB_RUN_NUMBER}"
           short="${GITHUB_SHA::7}"
           {
-            echo "FeedCap Pro Test, build ${GITHUB_RUN_NUMBER} (${short})."
+            echo "Finite Feed Pro Test, build ${GITHUB_RUN_NUMBER} (${short})."
             echo
             echo "Install the APK on Android. If you have a locally built copy, uninstall it first: it's signed with a different key."
             echo
@@ -75,6 +75,6 @@ jobs:
           gh release create "$tag" "${{ steps.apk.outputs.path }}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "FeedCap Pro Test build ${GITHUB_RUN_NUMBER}" \
+            --title "Finite Feed Pro Test build ${GITHUB_RUN_NUMBER}" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --latest

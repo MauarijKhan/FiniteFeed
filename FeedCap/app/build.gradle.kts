@@ -39,11 +39,11 @@ android {
             applicationIdSuffix = ".test"
             versionNameSuffix = "-pro-test"
             buildConfigField("boolean", "PRO_UNLOCKED", "true")
-            resValue("string", "app_name", "FeedCap Pro Test")
+            resValue("string", "app_name", "Finite Feed Pro Test")
         }
         release {
             buildConfigField("boolean", "PRO_UNLOCKED", "false")
-            resValue("string", "app_name", "FeedCap")
+            resValue("string", "app_name", "Finite Feed")
             isMinifyEnabled = false
         }
     }

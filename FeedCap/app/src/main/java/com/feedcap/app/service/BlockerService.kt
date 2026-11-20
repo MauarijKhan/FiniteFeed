@@ -98,8 +98,8 @@ class BlockerService : AccessibilityService() {
         store = Store.get(this)
         overlay = BlockOverlay(this)
         power = getSystemService(PowerManager::class.java)
-        // "FeedCap" also matches "FeedCap Pro Test".
-        tamperGuard = TamperGuard(this, "FeedCap")
+        // "Finite Feed" also matches "Finite Feed Pro Test".
+        tamperGuard = TamperGuard(this, "Finite Feed")
         // Onboarding sent the user to Accessibility settings: bring them back now it's on.
         if (store.awaitingPermission) {
             store.awaitingPermission = false
@@ -178,7 +178,7 @@ class BlockerService : AccessibilityService() {
         if (!overlay.isShowing) {
             overlay.show(
                 "Ask a parent",
-                "FeedCap is managed by a parent. It can only be turned off or removed with the parent PIN.",
+                "Finite Feed is managed by a parent. It can only be turned off or removed with the parent PIN.",
             )
         }
         note("parental: closed a settings screen ($pkg)")

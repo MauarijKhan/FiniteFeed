@@ -4,5 +4,5 @@
     <style name="Theme.FeedCap" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
-    <color name="ic_launcher_background">#000000</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

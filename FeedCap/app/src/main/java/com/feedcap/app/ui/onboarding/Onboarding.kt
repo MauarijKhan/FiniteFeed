@@ -289,7 +289,7 @@ fun OnboardingFlow(store: Store) {
                     }
                     PlainButton("Done", onClick = ::next)
                 }
-                Step.DONE -> PrimaryButton("Start Using FeedCap") { store.finishOnboarding() }
+                Step.DONE -> PrimaryButton("Start Using Finite Feed") { store.finishOnboarding() }
             }
         }
     }
@@ -354,7 +354,7 @@ private fun Welcome() {
     Spacer(Modifier.height(16.dp))
     Title(
         "Keep the app.\nLose the scroll.",
-        "Use Instagram and YouTube for friends, messages and search. FeedCap puts a quiet cap on endless Reels and Shorts.",
+        "Use Instagram and YouTube for friends, messages and search. Finite Feed puts a quiet cap on endless Reels and Shorts.",
     )
 }
 
@@ -468,11 +468,11 @@ private fun Reveal(who: Who?, usage: Usage) {
     ) {
         CompareBar("Now", now, now, fc.orange)
         Spacer(Modifier.height(16.dp))
-        CompareBar("With FeedCap", capped, now, fc.accent)
+        CompareBar("With Finite Feed", capped, now, fc.accent)
         Spacer(Modifier.height(18.dp))
         Text(
             if (back >= 1f) "About ${back.roundToInt()} days back each year. For sleep, friends and everything else."
-            else "Already pretty good. FeedCap helps keep it that way.",
+            else "Already pretty good. Finite Feed helps keep it that way.",
             style = FcType.subhead,
             color = fc.label,
         )
@@ -566,7 +566,7 @@ private fun PinStep(done: Boolean, onCreated: (String) -> Unit) {
         Text("PIN Set", style = FcType.title1, color = fc.label, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         Text(
-            "FeedCap's settings are locked. It can't be switched off or uninstalled without the PIN.",
+            "Finite Feed's settings are locked. It can't be switched off or uninstalled without the PIN.",
             style = FcType.body,
             color = fc.label2,
             textAlign = TextAlign.Center,
@@ -596,7 +596,7 @@ private fun PermissionStep(store: Store, onGranted: () -> Unit) {
         }
     }
 
-    Title("Turn on FeedCap", "It uses Android's Accessibility Service to notice Reels, Shorts and the home feed, and to step in at your limit.")
+    Title("Turn on Finite Feed", "It uses Android's Accessibility Service to notice Reels, Shorts and the home feed, and to step in at your limit.")
     Section {
         row { InfoRow("Sees", "Which screen is open in Instagram and YouTube") }
         row { InfoRow("Never", "Reads messages, records the screen or sends anything off this phone") }
@@ -609,8 +609,8 @@ private fun PermissionStep(store: Store, onGranted: () -> Unit) {
         row { MockSettingsRow(on) }
         if (!on) {
             row { StepRow(1, "Open Downloaded apps (or Installed apps)") }
-            row { StepRow(2, "Tap FeedCap") }
-            row { StepRow(3, "Turn on Use FeedCap") }
+            row { StepRow(2, "Tap Finite Feed") }
+            row { StepRow(3, "Turn on Use Finite Feed") }
         }
     }
     if (!on) {
@@ -656,7 +656,7 @@ private fun MockSettingsRow(granted: Boolean) {
     val checked = granted || phase > 0.5f
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Use FeedCap", style = FcType.body, color = fc.label)
+            Text("Use Finite Feed", style = FcType.body, color = fc.label)
             Text(
                 if (granted) "On" else "Waiting for you…",
                 style = FcType.footnote,
@@ -669,10 +669,10 @@ private fun MockSettingsRow(granted: Boolean) {
 
 @Composable
 private fun BatteryStep() {
-    Title("Keep FeedCap running", "Some phones close apps in the background to save battery. Let FeedCap run so limits always apply.")
+    Title("Keep Finite Feed running", "Some phones close apps in the background to save battery. Let Finite Feed run so limits always apply.")
     Section {
         row { StepRow(1, "Tap Open Battery Settings") }
-        row { StepRow(2, "Find FeedCap") }
+        row { StepRow(2, "Find Finite Feed") }
         row { StepRow(3, "Choose Unrestricted or Don't optimise") }
     }
 }

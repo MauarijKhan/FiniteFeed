@@ -197,7 +197,7 @@ fun CreatePin(onCreated: (String) -> Unit) {
     PinPad(
         title = if (first == null) "Create a Parent PIN" else "Confirm PIN",
         subtitle = if (first == null) {
-            "You'll need it to change limits or turn FeedCap off."
+            "You'll need it to change limits or turn Finite Feed off."
         } else {
             "Enter the same four digits again."
         },

@@ -345,12 +345,12 @@ private fun PageScaffold(
 // ---- Insights tab ----
 
 private val TOUR_STEPS = listOf(
-    TourStep("status", "FeedCap is on", "Green means FeedCap is watching Instagram and YouTube. If it ever says Off, tap it to turn it back on."),
+    TourStep("status", "Finite Feed is on", "Green means Finite Feed is watching Instagram and YouTube. If it ever says Off, tap it to turn it back on."),
     TourStep("rings", "Your day at a glance", "How much of today's Reels and Shorts time is left. Instagram and YouTube each get their own colour."),
     TourStep("quick", "Change things right here", "Tap any of these to adjust a limit, sleep time or the home feed without leaving this screen."),
     TourStep("week", "Your week", "Minutes a day for each app. The dashed line is your daily limit."),
     TourStep("tab_LIMITS", "All your limits", "Separate limits for each app, sleep time and Instagram's home feed live here."),
-    TourStep("tab_SETTINGS", "Settings", "Strict Mode, parental controls and the look of FeedCap."),
+    TourStep("tab_SETTINGS", "Settings", "Strict Mode, parental controls and the look of Finite Feed."),
 )
 
 /** Per-app picture for today. */
@@ -405,8 +405,8 @@ private fun InsightsPage(ui: Ui) {
         TodayCard(ui, apps, sleepNow?.until, postModeUntil)
 
         if (!ui.serviceOn) {
-            Section(footer = "FeedCap needs this to notice Reels, Shorts and the home feed.") {
-                row { ActionRow("Turn On FeedCap") { ui.edit(Edit.PERMISSION) } }
+            Section(footer = "Finite Feed needs this to notice Reels, Shorts and the home feed.") {
+                row { ActionRow("Turn On Finite Feed") { ui.edit(Edit.PERMISSION) } }
             }
         }
         if (parental.enabled) {
@@ -805,7 +805,7 @@ private fun SettingsPage(ui: Ui) {
             row { AccentSwatches(accent) { store.setAccent(it) } }
         }
 
-        Section(header = "FeedCap") {
+        Section(header = "Finite Feed") {
             row { NavRow("Accessibility", if (ui.serviceOn) "On" else "Off") { ui.edit(Edit.PERMISSION) } }
             row { ToggleRow("Limits Active", s.enabled) { on -> ui.change { it.copy(enabled = on) } } }
             row {
@@ -818,7 +818,7 @@ private fun SettingsPage(ui: Ui) {
 
         Spacer(Modifier.height(28.dp))
         Text(
-            "FeedCap ${BuildConfig.VERSION_NAME}",
+            "Finite Feed ${BuildConfig.VERSION_NAME}",
             style = FcType.footnote,
             color = fc.label3,
             textAlign = TextAlign.Center,
@@ -904,7 +904,7 @@ private fun ParentalPage(ui: Ui, parental: com.feedcap.app.data.Parental) {
     PageScaffold(title = "Parental Controls", back = "Settings" to { ui.open(Page.HOME) }) {
         if (!parental.enabled) {
             Text(
-                "For a child's phone. A parent PIN locks FeedCap's settings, and stops FeedCap being switched off or uninstalled.",
+                "For a child's phone. A parent PIN locks Finite Feed's settings, and stops Finite Feed being switched off or uninstalled.",
                 style = FcType.body,
                 color = fc.label2,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -924,7 +924,7 @@ private fun ParentalPage(ui: Ui, parental: com.feedcap.app.data.Parental) {
                 }
                 if (open) row { ActionRow("Lock Now") { store.lockParent() } }
             }
-            Section(footer = "Closes FeedCap's pages in Android's Settings, so it can't be switched off, force-stopped or uninstalled.") {
+            Section(footer = "Closes Finite Feed's pages in Android's Settings, so it can't be switched off, force-stopped or uninstalled.") {
                 row {
                     ToggleRow("Prevent Removal", parental.guard) { on ->
                         ui.guarded("Enter the parent PIN to change this.") { store.setParentGuard(on) }
@@ -961,7 +961,7 @@ private fun TestPage(ui: Ui) {
             row { ActionRow("Reset Today's Counters") { store.resetBudget() } }
             row { ActionRow("Replay Onboarding") { store.replayOnboarding() } }
         }
-        Section(footer = "Open Instagram or YouTube, then come back to see what FeedCap detected.") {
+        Section(footer = "Open Instagram or YouTube, then come back to see what Finite Feed detected.") {
             row { ToggleRow("Screen Inspector", inspector) { store.setInspector(it) } }
             if (inspector && debug.pkg.isNotEmpty()) {
                 row { NavRow("App", debug.pkg.substringAfterLast('.'), enabled = false) {} }
@@ -1223,8 +1223,8 @@ private fun StrictExitSheet(ui: Ui, close: () -> Unit) {
 private fun PermissionSheet(ui: Ui, close: () -> Unit) {
     Sheet(title = "Accessibility", onDismiss = close) {
         Text(
-            if (ui.serviceOn) "FeedCap is on and watching for Reels, Shorts and the home feed."
-            else "FeedCap uses Android's Accessibility Service to notice Reels, Shorts and the home feed, and to step in at your limit.",
+            if (ui.serviceOn) "Finite Feed is on and watching for Reels, Shorts and the home feed."
+            else "Finite Feed uses Android's Accessibility Service to notice Reels, Shorts and the home feed, and to step in at your limit.",
             style = FcType.body,
             color = fc.label2,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
