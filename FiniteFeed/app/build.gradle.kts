@@ -41,10 +41,14 @@ android {
             buildConfigField("boolean", "PRO_UNLOCKED", "true")
             resValue("string", "app_name", "Finite Feed Pro Test")
         }
+        // The finished app, published on GitHub. Free until billing exists, so Pro is unlocked.
         release {
-            buildConfigField("boolean", "PRO_UNLOCKED", "false")
+            if (ciKeystore != null) signingConfig = signingConfigs.getByName("ci")
+            buildConfigField("boolean", "PRO_UNLOCKED", "true")
             resValue("string", "app_name", "Finite Feed")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
