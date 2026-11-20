@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FeedCap"
+rootProject.name = "FiniteFeed"
 include(":app")

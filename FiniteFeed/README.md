@@ -11,7 +11,7 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 ./gradlew testDebugUnitTest assembleDebug
 ```
 
-- **Debug = Pro test build**: `com.feedcap.app.test`, label "FeedCap Pro Test", `BuildConfig.PRO_UNLOCKED = true`, plus a Test tools section.
+- **Debug = Pro test build**: `com.feedcap.app.test`, label "Finite Feed Pro Test", `BuildConfig.PRO_UNLOCKED = true`, plus a Test tools section.
 - **Release**: `com.feedcap.app`, Pro locked. There's no billing yet.
 
 ## Releases (CI)
@@ -26,12 +26,12 @@ CI signs with a fixed key from the repo secrets `FEEDCAP_KEYSTORE_BASE64`, `FEED
 ~/Library/Android/sdk/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Or copy the APK to the phone and open it. If you install from Files or a browser, Android 13+ greys out the Accessibility switch. To fix it, open **App info → ⋮ → Allow restricted settings**, then turn FeedCap on in Accessibility settings. Installing with `adb` avoids this.
+Or copy the APK to the phone and open it. If you install from Files or a browser, Android 13+ greys out the Accessibility switch. To fix it, open **App info → ⋮ → Allow restricted settings**, then turn Finite Feed on in Accessibility settings. Installing with `adb` avoids this.
 
 ## Parental controls and onboarding
 
-- **Parental controls:** a 4-digit parent PIN (salted PBKDF2 hash, with longer lockouts after wrong guesses) locks every setting. A correct PIN unlocks for 5 minutes. While it's locked, `TamperGuard` closes FeedCap's Accessibility page, its App info page and the uninstall dialog. Debug builds have a "Forgot PIN" escape hatch.
-- **Onboarding:** first run only (replay it from Test Tools). Answers and the current step are saved as you go, so leaving for Settings, or the app being closed, resumes where it left off. When the permission is switched on, the service brings FeedCap back to the front.
+- **Parental controls:** a 4-digit parent PIN (salted PBKDF2 hash, with longer lockouts after wrong guesses) locks every setting. A correct PIN unlocks for 5 minutes. While it's locked, `TamperGuard` closes Finite Feed's Accessibility page, its App info page and the uninstall dialog. Debug builds have a "Forgot PIN" escape hatch.
+- **Onboarding:** first run only (replay it from Test Tools). Answers and the current step are saved as you go, so leaving for Settings, or the app being closed, resumes where it left off. When the permission is switched on, the service brings Finite Feed back to the front.
 - **Design:** `ui/design/Design.kt` follows Apple's Human Interface Guidelines: system grouped backgrounds, inset grouped sections, large titles, iOS switches, sheets with steppers and wheels, and one indigo accent, in light and dark.
 
 ## Code map
@@ -51,6 +51,6 @@ Or copy the APK to the phone and open it. If you install from Files or a browser
 The view IDs in `Rules.kt` are best guesses from how Instagram and YouTube name their layouts, and they change with app updates. To verify them:
 
 1. Turn on **Test tools → Screen inspector**.
-2. Open Reels in Instagram (or Shorts in YouTube), then switch back to FeedCap.
+2. Open Reels in Instagram (or Shorts in YouTube), then switch back to Finite Feed.
 3. "On Reels/Shorts" should say **yes**. If it says no, find the Reels/Shorts container in the "Visible view IDs" list and add it to `surfaceIds` in `Rules.kt`.
 4. Open a DM chat in Instagram, then switch back. "On a DM chat" should say **yes**. If it says no, add a chat-screen ID to `dmIds`. Without it, reels from DMs are treated like normal Reels.

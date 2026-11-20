@@ -1,10 +1,10 @@
 # Android / Gradle
-FeedCap/.gradle/
-FeedCap/build/
-FeedCap/app/build/
-FeedCap/.kotlin/
-FeedCap/local.properties
-FeedCap/.idea/
+FiniteFeed/.gradle/
+FiniteFeed/build/
+FiniteFeed/app/build/
+FiniteFeed/.kotlin/
+FiniteFeed/local.properties
+FiniteFeed/.idea/
 *.iml
 captures/
 
